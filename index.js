@@ -1,5 +1,5 @@
 const express = require("express");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
 require("dotenv").config();
@@ -38,6 +38,40 @@ async function run() {
     const serviceCollection = client.db("law_firm").collection("services");
     const bookingCollection = client.db("law_firm").collection("bookings");
     const userCollection = client.db("law_firm").collection("users");
+    const reviewerCollection = client.db("law_firm").collection("reviewer");
+
+    app.delete("/service/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) };
+      const result = await serviceCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    app.post("/service", async (req, res) => {
+      const serviceData = req.body;
+      console.log(serviceData);
+      const result = await serviceCollection.insertOne(serviceData);
+      res.send({ success: true, result });
+    });
+
+    app.get("/reviewers", async (req, res) => {
+      const query = {};
+      const reviews = await reviewerCollection.find(query).toArray();
+      res.send(reviews);
+    });
+
+    app.post("/reviewers", async (req, res) => {
+      const reviewer = req.body;
+      const result = await reviewerCollection.insertOne(reviewer);
+      res.send({ success: true, result });
+    });
+
+    app.delete("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await userCollection.deleteOne(query);
+      res.send(result);
+    });
 
     app.get("/admin/:email", async (req, res) => {
       const email = req.params.email;
@@ -128,6 +162,7 @@ async function run() {
         return res.send({ success: false, booking: exists });
       }
       const result = await bookingCollection.insertOne(data);
+      console.log(result);
       return res.send({ success: true, result });
     });
 
