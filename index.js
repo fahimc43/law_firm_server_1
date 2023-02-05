@@ -3,6 +3,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIP_SECRET);
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -39,15 +40,54 @@ async function run() {
     const bookingCollection = client.db("law_firm").collection("bookings");
     const userCollection = client.db("law_firm").collection("users");
     const reviewerCollection = client.db("law_firm").collection("reviewer");
+    const paymentCollection = client.db("law_firm").collection("payments");
 
-    app.delete("/service/:id", async (req, res) => {
+    app.post("/payment", async (req, res) => {
+      const payment = req.body;
+      const result = await paymentCollection.insertOne(payment);
+      const id = payment.bookingId;
+      const filter = { _id: ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          paid: true,
+          transactionId: payment.transactionId,
+        },
+      };
+      const updateResult = await bookingCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    app.post("/create-payment-intent", async (req, res) => {
+      const booking = req.body;
+      const price = booking.price;
+      const amount = price * 100;
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        currency: "usd",
+        amount: amount,
+        payment_method_types: ["card"],
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.get("/booking/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) };
+      const booking = await bookingCollection.findOne(query);
+      res.send(booking);
+    });
+
+    app.delete("/service/:id", verifyJWT, async (req, res) => {
       const id = req.params.id;
       const query = { _id: ObjectId(id) };
       const result = await serviceCollection.deleteOne(query);
       res.send(result);
     });
 
-    app.post("/service", async (req, res) => {
+    app.post("/service", verifyJWT, async (req, res) => {
       const serviceData = req.body;
       console.log(serviceData);
       const result = await serviceCollection.insertOne(serviceData);
@@ -60,20 +100,20 @@ async function run() {
       res.send(reviews);
     });
 
-    app.post("/reviewers", async (req, res) => {
+    app.post("/reviewers", verifyJWT, async (req, res) => {
       const reviewer = req.body;
       const result = await reviewerCollection.insertOne(reviewer);
       res.send({ success: true, result });
     });
 
-    app.delete("/users/:email", async (req, res) => {
+    app.delete("/users/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
       const result = await userCollection.deleteOne(query);
       res.send(result);
     });
 
-    app.get("/admin/:email", async (req, res) => {
+    app.get("/admin/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
       const user = await userCollection.findOne({ email: email });
       const isAdmin = user.role === "admin";
@@ -162,7 +202,7 @@ async function run() {
         return res.send({ success: false, booking: exists });
       }
       const result = await bookingCollection.insertOne(data);
-      console.log(result);
+      // console.log("booking", result);
       return res.send({ success: true, result });
     });
 
